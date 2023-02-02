@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Example"
+Parameters:
+  ImageUri:
+    Type: String
+    Description: "The URI of the container image"
+  SsmKmsArn:
+    Type: String
+    Description: "The ARN of the KMS key which is used to encrypt secrets in SSM parameter store"
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: "ReadSsmParameters"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: "ReadAccess"
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*"
+              - Sid: "DecryptSecrets"
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  - !Ref SsmKmsArn
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      PackageType: Image
+      FunctionName: lambda-ssm-wrapper
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command:
+          - "lambda.handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SSM_SECRET_TOKEN: "/examples/token:1"
+          SSM_PARAMETER: "/examples/parameter:1"
+          ANOTHER_PARAMETER: "happy-hamburgers"
