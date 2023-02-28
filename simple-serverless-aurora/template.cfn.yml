@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Example serverless aurora cluster'
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "The VPC id which the DB will be deployed to"
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: "IDs of the subnets for the service"
+
+  SsmDatabasePassword:
+    Type: String
+    Description: "Path and version of an SSM parameter store parameter of type secure string."
+    AllowedPattern: "[a-zA-Z0-9_.-/]+:\\d+"
+    ConstraintDescription: "Must be in the form <ssm-parameter-name>:<version-number> e.g.: /dev/db/password:1"
+
+  SsmDatabaseUsername:
+    Type: String
+    Description: "Path and version of an SSM parameter store parameter of type string."
+    AllowedPattern: "[a-zA-Z0-9_.-/]+:\\d+"
+    ConstraintDescription: "Must be in the form <ssm-parameter-name>:<version-number> e.g.: /dev/db/username:1"
+
+  DatabaseName:
+    Description: "Database Name"
+    Type: String
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: "^[a-zA-Z]+[0-9a-zA-Z_]*$"
+    ConstraintDescription: "Must start with a letter. Only numbers, letters, and _ accepted. max length 64 characters"
+    Default: "postgres"
+
+  DatabasePort:
+    Description: "TCP/IP Port for the Database Instance"
+    Type: Number
+    Default: 5432
+    ConstraintDescription: 'Must be in the range [1115-65535]'
+    MinValue: 1115
+    MaxValue: 65535
+
+Resources:
+  DatabaseAccessSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "Access to the RDS cluster"
+      VpcId: !Ref VpcId
+
+  # RDS  cluster
+  RdsClusterSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "RDS cluster security group"
+      VpcId: !Ref VpcId
+
+  RdsSecurityGroupIngressFromExternalSecurityGroup:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RdsClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref DatabasePort
+      ToPort: !Ref DatabasePort
+      SourceSecurityGroupId: !Ref DatabaseAccessSecurityGroup
+
+  DBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: !Ref 'AWS::StackName'
+      SubnetIds: !Ref SubnetIds
+
+  AuroraKMSCMK:
+    Type: 'AWS::KMS::Key'
+    DeletionPolicy: Retain
+    Properties:
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:CreateGrant'
+              - 'kms:ListGrants'
+              - 'kms:DescribeKey'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:CallerAccount': !Ref 'AWS::AccountId'
+                'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
+
+  RDSDBServerlessClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: !Join ["- ", ["Aurora PG Cluster Parameter Group for Cloudformation Stack and postgres 11 ", !Ref DatabaseName]]
+      Family: "aurora-postgresql11"
+      Parameters:
+        rds.force_ssl: 0
+
+  ServerlessAuroraDBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: aurora-postgresql
+      EngineMode: serverless
+      DeletionProtection: true
+      ScalingConfiguration:
+        MaxCapacity: 4
+        MinCapacity: 2
+      EngineVersion: 11.13
+      DatabaseName: !Ref DatabaseName
+      Port: !Ref DatabasePort
+      MasterUsername: !Sub '{{resolve:ssm:${SsmDatabaseUsername}}}'
+      MasterUserPassword: !Sub '{{resolve:ssm-secure:${SsmDatabasePassword}}}'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RdsClusterSecurityGroup
+      BackupRetentionPeriod: 7
+      DBClusterParameterGroupName: !Ref RDSDBServerlessClusterParameterGroup
+      StorageEncrypted: true
+      KmsKeyId: !Ref AuroraKMSCMK
+
+
+Outputs:
+  DatabaseHost:
+    Description: 'Aurora Cluster/Writer Endpoint'
+    Value: !GetAtt ServerlessAuroraDBCluster.Endpoint.Address
+  DatabasePort:
+    Description: 'Aurora Endpoint Port'
+    Value: !GetAtt ServerlessAuroraDBCluster.Endpoint.Port
+  DatabaseName:
+    Description: 'Database Name'
+    Value: !Ref DatabaseName
+  SsmDatabasePassword:
+    Description: 'Name of the parameter in parameter store which stores the database password'
+    Value: !Ref SsmDatabasePassword
+  SsmDatabaseUsername:
+    Description: 'Name of the parameter in parameter store which stores the database username'
+    Value: !Ref SsmDatabaseUsername
+  DatabaseAccessSecurityGroupId:
+    Description: 'Security group ID which has access to the database'
+    Value: !Ref DatabaseAccessSecurityGroup
