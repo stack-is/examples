@@ -38,6 +38,16 @@ Parameters:
     MinValue: 1115
     MaxValue: 65535
 
+  Environment:
+    Type: String
+    AllowedValues:
+      - prod
+      - test
+    Default: "test"
+
+Conditions:
+  IsTest: !Equals [!Ref Environment, "test"]
+
 Resources:
   DatabaseAccessSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -106,12 +116,10 @@ Resources:
 
   ServerlessAuroraDBCluster:
     Type: AWS::RDS::DBCluster
-    DeletionPolicy: Snapshot
-    UpdateReplacePolicy: Snapshot
     Properties:
       Engine: aurora-postgresql
       EngineMode: serverless
-      DeletionProtection: true
+      DeletionProtection: !If [IsTest, false, true]
       ScalingConfiguration:
         MaxCapacity: 4
         MinCapacity: 2
@@ -127,6 +135,7 @@ Resources:
       DBClusterParameterGroupName: !Ref RDSDBServerlessClusterParameterGroup
       StorageEncrypted: true
       KmsKeyId: !Ref AuroraKMSCMK
+      EnableHttpEndpoint: true
 
 
 Outputs:
