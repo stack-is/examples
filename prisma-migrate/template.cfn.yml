@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Database migration tasks"
+Parameters:
+  ImageUri:
+    Type: String
+    Description: "The migration task image uri"
+  KmsSsmArn:
+    Type: String
+    Description: "The ARN of KMS key which encrypts secret parameter store values"
+  SsmDatabaseUsername:
+    Type: String
+    Description: "The parameter store path to the database username"
+  SsmDatabasePassword:
+    Type: String
+    Description: "The parameter store path to the database password"
+  DatabaseName:
+    Type: String
+    Description: "The parameter store path to the database name"
+  DatabaseHost:
+    Type: String
+    Description: "The parameter store path to the database endpoint"
+  DatabasePort:
+    Type: Number
+    Description: "The database port"
+  SecurityGroupId:
+    Type: String
+    Description: "The security group id which can access the rds cluster"
+  DatabaseSubnets:
+    Type: CommaDelimitedList
+    Description: "A list of subnet ids which the database cluster is running in"
+
+Resources:
+  MigrationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+      Policies:
+        - PolicyName: "MigrationFunctionExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: "ReadAccess"
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*"
+              - Sid: "DecryptSecrets"
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  - !Ref KmsSsmArn
+  MigrationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command:
+          - "prisma_migrate.cfn_handler"
+      MemorySize: 1024
+      Role: !GetAtt MigrationFunctionRole.Arn
+      Environment:
+        Variables:
+          SSM_DB_USERNAME: !Ref SsmDatabaseUsername
+          SSM_DB_PASSWORD: !Ref SsmDatabasePassword
+          DB_HOST: !Ref DatabaseHost
+          DB_NAME: !Ref DatabaseName
+          DB_SCHEMA: "public"
+          DB_PORT: !Ref DatabasePort
+      Timeout: 900
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref DatabaseSubnets
+
+  DeployMigrationTask:
+    Type: Custom::ExecutePrismaMigrate
+    Properties:
+      ServiceToken: !GetAtt MigrationFunction.Arn
+      ImageUri: !Ref ImageUri # This is not actually used it just forces the task to update

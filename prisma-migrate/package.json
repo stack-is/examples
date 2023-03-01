@@ -1,0 +1,19 @@
+{
+  "name": "prisma-migrate",
+  "version": "1.0.0",
+  "dependencies": {
+    "@prisma/migrate": "4.11.0",
+    "@prisma/client": "4.11.0",
+    "cfn-custom-resource": "^5.0.14"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.0.0",
+    "prisma": "4.11.0"
+  },
+  "scripts": {
+    "start-local-db": "dotenv -e .env.local -- /bin/bash -c 'docker run --name localdb -p ${DB_PORT}:5432 -e POSTGRES_DB=${DB_NAME} -e POSTGRES_USER=${DB_USERNAME} -e POSTGRES_PASSWORD=${DB_PASSWORD} --rm -it postgres:${DB_POSTGRES_VERSION}-alpine postgres -c log_statement=all'",
+    "migrate-local-db": "dotenv -e .env.local -- prisma migrate deploy",
+    "create-migration-script": "dotenv -e .env.local -- prisma migrate dev --create-only --name ",
+    "build-image": "docker build --tag examples/prisma-migrate:${VERSION:-latest} ."
+  }
+}
