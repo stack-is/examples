@@ -28,7 +28,7 @@ docker push <account-id>.dkr.ecr.<region>.amazonaws.com/examples/ssm-wrapper:lat
 `
 <account-id>.dkr.ecr.<region>.amazonaws.com/examples/ssm-wrapper:latest
 `
-### Step 4: Create some SSM Parameter store values
+### Step 3: Create some SSM Parameter store values
 Here we just create two types of parameters, regular string and secure string. Note that this will use the default KMS key to encrypt the secure string. 
 ```shell
 aws ssm put-parameter \
@@ -42,14 +42,14 @@ aws ssm put-parameter \
   --value "flawless-flapjack"
 ```
 
-### Step 5: Fetch the ARN of the default KMS key
+### Step 4: Fetch the ARN of the default KMS key
 ```bash
 aws kms describe-key \
   --key-id "alias/aws/ssm" \
   --query KeyMetadata.Arn \
   --output text
 ```
-### Step 6: Deploy the Cloudformation template
+### Step 5: Deploy the Cloudformation template
 ```bash
 aws cloudformation deploy \
   --template-file template.cfn.yml \
@@ -57,11 +57,11 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides \
     "ImageUri=<account-id>.dkr.ecr.<region>.amazonaws.com/examples/ssm-wrapper:latest" \
-    "SsmKmsArn=arn:aws:kms:<region>:<account-id>:key/<key-id>"
+    "KmsSsmArn=arn:aws:kms:<region>:<account-id>:key/<key-id>"
 ```
 
 
-### Step 7: Test your function
+### Step 6: Test your function
 ```bash
 aws lambda invoke --function-name lambda-ssm-wrapper out.json
 ```

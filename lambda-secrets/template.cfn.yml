@@ -4,7 +4,7 @@ Parameters:
   ImageUri:
     Type: String
     Description: "The URI of the container image"
-  SsmKmsArn:
+  KmsSsmArn:
     Type: String
     Description: "The ARN of the KMS key which is used to encrypt secrets in SSM parameter store"
 Resources:
@@ -39,7 +39,7 @@ Resources:
                 Action:
                   - kms:Decrypt
                 Resource:
-                  - !Ref SsmKmsArn
+                  - !Ref KmsSsmArn
 
   Function:
     Type: AWS::Lambda::Function
