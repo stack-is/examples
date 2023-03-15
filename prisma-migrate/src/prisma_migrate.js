@@ -1,3 +1,14 @@
+
+function getDbConnectionUrlFromEnvironment() {
+    let url = `postgresql://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`;
+    if (process.env.DB_SCHEMA) {
+        url = url + `?schema=${process.env.DB_SCHEMA}`
+    }
+    return url;
+}
+
+process.env.DATABASE_URL = getDbConnectionUrlFromEnvironment();
+
 function getLogStreamUrl() {
     // These values are specified by the lambda runtime environment: https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     if (process.env?.AWS_LAMBDA_LOG_GROUP_NAME && process.env?.AWS_LAMBDA_LOG_STREAM_NAME && process.env?.AWS_REGION) {
@@ -8,13 +19,6 @@ function getLogStreamUrl() {
 
 }
 
-function getDatabaseConnectionStringForPrisma() {
-    let url = `postgresql://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`;
-    if (process.env.DB_SCHEMA) {
-        url = url + `?schema=${process.env.DB_SCHEMA}`
-    }
-    return url;
-}
 
 function getPrismaErrorCode(e) {
     return e?.code ?? e?.errorCode;
@@ -34,12 +38,11 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function execPrismaMigrate(schema) {
+async function execPrismaMigrate(schemaFilePath) {
     for await (const attempt of iterateAttempts(5, 5000)) {
         try {
-            process.env.DATABASE_URL = getDatabaseConnectionStringForPrisma(true);
             const {Migrate} = require('@prisma/migrate');
-            const migrate = new Migrate(schema);
+            const migrate = new Migrate(schemaFilePath);
             return await migrate.applyMigrations();
         } catch (e) {
             const code = getPrismaErrorCode(e);
@@ -49,7 +52,6 @@ async function execPrismaMigrate(schema) {
             console.error(e);
         }
     }
-
 }
 
 exports.cfn_handler = async function(event, context) {
