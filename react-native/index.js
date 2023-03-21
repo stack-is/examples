@@ -2,7 +2,7 @@
  * @format
  */
 
-import {AppRegistry} from 'react-native';
-import App from './App';
+import { AppRegistry } from 'react-native';
+import { App } from './App';
 
-AppRegistry.registerComponent('Stack Examples', () => App);
+AppRegistry.registerComponent('StackExamples', () => App);
