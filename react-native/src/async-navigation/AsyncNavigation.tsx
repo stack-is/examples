@@ -3,6 +3,7 @@ import React, {
     PropsWithChildren,
     useContext,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState
@@ -15,9 +16,11 @@ import {
     useNavigation,
     useRoute
 } from '@react-navigation/native';
-import { Invoice } from './Boilerplate';
+import { Card, Currency, Invoice } from './Boilerplate';
 import { differenceInMilliseconds } from 'date-fns';
-import { getRandomId, GlobalStorage } from '../common/Utilities';
+import { getRandomId, GlobalStorage, sleep } from '../common/Utilities';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack/lib/typescript/src/types';
+import { NativeStackNavigationOptions } from '@react-navigation/native-stack/src/types';
 
 export enum Screens {
     InvoiceList = 'InvoiceList',
@@ -29,11 +32,39 @@ export enum Screens {
     SelectDate = 'SelectDate'
 }
 
-export type ScreenDefinitions = {
-    screen: Screens.InvoiceDetail;
-    input: Invoice;
-    output: Invoice;
-};
+export const MODALS: Screens[] = [
+    Screens.Authentication,
+    Screens.SelectCard,
+    Screens.SelectCurrency,
+    Screens.SelectDate
+];
+export const MODAL_ANIMATION_DURATION = 350;
+export type ScreenDefinitions =
+    | {
+          screen: Screens.InvoiceDetail;
+          input: Invoice;
+          output: Invoice;
+      }
+    | {
+          screen: Screens.Authentication;
+          input: undefined;
+          output: { successful: boolean };
+      }
+    | {
+          screen: Screens.SelectCard;
+          input: undefined;
+          output: Card;
+      }
+    | {
+          screen: Screens.SelectCurrency;
+          input: undefined;
+          output: Currency;
+      }
+    | {
+          screen: Screens.SelectDate;
+          input: { defaultSelection?: number; maxDate?: number; minDate?: number };
+          output: number;
+      };
 export type CommonScreenInput = { screen?: Screens; initial?: boolean } | undefined;
 export type ScreenInput<
     T extends Screens,
@@ -64,10 +95,12 @@ export type ScreenOutput<
     : TExtracted extends { output: infer TOut }
     ? TOut
     : undefined;
-export type ScreenResult<T extends Screens, A> = {
-    backClicked?: boolean;
-    result?: ScreenOutput<T, A>;
-};
+export type ScreenResult<T extends Screens, A> =
+    | {
+          backClicked: true;
+          result: undefined;
+      }
+    | { backClicked: false; result: ScreenOutput<T, A> };
 
 export type FullParams<T extends Screens, A> = {
     listenerId?: string;
@@ -92,6 +125,7 @@ export class Navigator<TCurrentScreen extends Screens> {
     }
 
     constructor(
+        private screen: Screens,
         private navigation: NavigationProp<any, any>,
         private route: RouteProp<any, any>,
         private navigationListeners: NavigationListenerStorage
@@ -170,7 +204,8 @@ export class Navigator<TCurrentScreen extends Screens> {
         }
         //In this case we simulate a back click and unchanged status. Could add a "cancelled" field later on
         return {
-            backClicked: true
+            backClicked: true,
+            result: undefined
         };
     }
 
@@ -191,15 +226,18 @@ export class Navigator<TCurrentScreen extends Screens> {
     }
 
     async completeAndGoBack(
-        result?: ScreenOutput<TCurrentScreen, ScreenDefinitions>
+        result: ScreenOutput<TCurrentScreen, ScreenDefinitions>
     ): Promise<void> {
         if (this.hasGoneBack || this.isGoingBack) {
             return;
         }
         this.hasGoneBack = true;
         this.isGoingBack = true;
-        this.notifyListenerIfPresent({ result });
         this.navigation.goBack();
+        if (MODALS.includes(this.screen)) {
+            await sleep(MODAL_ANIMATION_DURATION);
+        }
+        this.notifyListenerIfPresent({ backClicked: false, result });
         this.isGoingBack = false;
     }
 
@@ -209,11 +247,15 @@ export class Navigator<TCurrentScreen extends Screens> {
         }
         this.hasGoneBack = true;
         this.isGoingBack = true;
+        this.navigation?.goBack();
+        if (MODALS.includes(this.screen)) {
+            await sleep(MODAL_ANIMATION_DURATION);
+        }
         this.onGoBackListener?.();
         this.notifyListenerIfPresent({
-            backClicked: true
+            backClicked: true,
+            result: undefined
         });
-        this.navigation?.goBack();
         this.isGoingBack = false;
     }
 
@@ -224,20 +266,27 @@ export class Navigator<TCurrentScreen extends Screens> {
     }
 }
 
-export function useAsyncNavigation<TScreen extends Screens = any>(
-    screen?: TScreen
+export function useAsyncNavigation<TScreen extends Screens = Screens>(
+    screen: TScreen,
+    options?: NativeStackNavigationOptions
 ): {
     params: ScreenInput<TScreen, ScreenDefinitions>;
     navigator: Navigator<TScreen>;
-    navigation: NavigationProp<any, any>;
+    navigation: NativeStackNavigationProp<any, any>;
 } {
-    const navigation = useNavigation();
+    const navigation = useNavigation() as NativeStackNavigationProp<any, any>;
     const route = useRoute();
     const { navigationListeners } = useContext(AsyncNavigationContext);
     const navigator = useMemo(
-        () => new Navigator<TScreen>(navigation, route, navigationListeners),
+        () => new Navigator<TScreen>(screen, navigation, route, navigationListeners),
         []
     );
+    useLayoutEffect(() => {
+        if (options) {
+            navigation.setOptions(options);
+        }
+    }, [navigation]);
+
     return {
         navigator,
         navigation,
