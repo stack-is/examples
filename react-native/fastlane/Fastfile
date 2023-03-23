@@ -1,0 +1,36 @@
+fastlane_require "aws-sdk-ssm"
+require_relative 'env'
+
+default_platform(:ios)
+
+before_all do
+  ENV["FASTLANE_SKIP_DOCS"] = "1"
+  if ENV["AWS_ACCESS_KEY_ID"] == '!AWS_ACCESS_KEY_ID!'
+    UI.user_error! "You need to replace the placeholder values in /fastlane/.env with your own values"
+  end
+  Stack::Env.do_initialize
+  Stack::Env.load_envs(['SENTRY_AUTH_TOKEN', 'SENTRY_DSN', 'ITUNES_CONNECT_TEAM_ID', 'APPLE_DEVELOPER_TEAM_ID', 'MATCH_PASSWORD', 'APPLE_ID', 'APPLE_ID_PASSWORD'])
+end
+
+platform :ios do
+
+  lane :setup_env_file_for_app do
+    dot_env_variables = [
+      "APPENV",
+      "APIURL",
+      "SENTRY_DSN",
+    ]
+    Stack::Env.load_envs(dot_env_variables)
+
+    contents = ""
+    dot_env_variables.each do |key|
+      if ENV[key] == nil
+        UI.crash! "Missing environment value for #{key}"
+      end
+      contents += "#{key}=#{ENV[key]}\n"
+    end
+
+    UI.message(".env file contents:\n#{contents}")
+  end
+
+end
