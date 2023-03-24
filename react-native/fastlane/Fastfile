@@ -4,11 +4,11 @@ require_relative 'env'
 default_platform(:ios)
 
 before_all do
-  ENV["FASTLANE_SKIP_DOCS"] = "1"
-  if ENV["AWS_ACCESS_KEY_ID"] == '!AWS_ACCESS_KEY_ID!'
-    UI.user_error! "You need to replace the placeholder values in /fastlane/.env with your own values"
+  Dotenv.overload "#{ENV["HOME"]}/.fastlane/.env.aws"
+
+  unless ENV["AWS_ACCESS_KEY_ID"]
+    UI.user_error! "AWS access not set up correctly. Expected to load a file in $HOME/.fastlane/.env.aws. Either create a file there or modify the path fastlane loads from."
   end
-  Stack::Env.do_initialize
   Stack::Env.load_envs(['SENTRY_AUTH_TOKEN', 'SENTRY_DSN', 'ITUNES_CONNECT_TEAM_ID', 'APPLE_DEVELOPER_TEAM_ID', 'MATCH_PASSWORD', 'APPLE_ID', 'APPLE_ID_PASSWORD'])
 end
 
@@ -30,7 +30,15 @@ platform :ios do
       contents += "#{key}=#{ENV[key]}\n"
     end
 
-    UI.message(".env file contents:\n#{contents}")
+    #Can also do it this way if we want to
+    contents = "APPENV=#{Stack::Env.APPENV}
+APIURL=#{Stack::Env.APIURL}
+SENTRY_DSN=#{Stack::Env.SENTRY_DSN}"
+
+    #Write to a .env file which the app can use through react-native-config
+    File.open("../.env", "w+") do |file|
+      file.puts contents
+    end
   end
 
 end

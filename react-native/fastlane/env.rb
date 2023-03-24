@@ -2,23 +2,13 @@ require 'dotenv'
 require "aws-sdk-ssm"
 
 module Stack
-  #noinspection RubyClassMethodNamingConvention
   class Env
     @@client = nil
     @@loadedVariables = {}
 
-    def self.do_initialize
-      unless ENV["APPENV"]
-        puts("No APPENV provided, setting it to 'dev'")
-        ENV["APPENV"] = "dev"
-      end
-
-      @@client = Aws::SSM::Client.new
-    end
-
     def self.get_client
       unless @@client
-        self.do_initialize
+        @@client = Aws::SSM::Client.new
       end
       @@client
     end
@@ -30,7 +20,6 @@ module Stack
         value = ENV[key]
         if value&.include? 'ssm:'
           parameter_name = value.gsub('ssm:', '')
-          parameter_name = parameter_name.gsub('APPENV', ENV['APPENV'])
           puts "Fetching parameter #{parameter_name} from parameter store"
           value = self.get_client.get_parameter({ name: parameter_name, with_decryption: true }).parameter.value
           ENV[key] = value
