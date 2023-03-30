@@ -1,6 +1,7 @@
 import React, {
     createContext,
     PropsWithChildren,
+    useCallback,
     useContext,
     useEffect,
     useLayoutEffect,
@@ -21,6 +22,7 @@ import { differenceInMilliseconds } from 'date-fns';
 import { getRandomId, GlobalStorage, sleep } from '../common/Utilities';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack/lib/typescript/src/types';
 import { NativeStackNavigationOptions } from '@react-navigation/native-stack/src/types';
+import { NavigationState } from '@react-navigation/routers';
 
 export enum Screens {
     InvoiceList = 'InvoiceList',
@@ -102,9 +104,8 @@ export type ScreenResult<T extends Screens, A> =
       }
     | { backClicked: false; result: ScreenOutput<T, A> };
 
-export type FullParams<T extends Screens, A> = {
+export type FullParams<T extends Screens, A> = ScreenInput<T, A> & {
     listenerId?: string;
-    [key: string]: any;
 };
 
 enum NavigationType {
@@ -115,10 +116,7 @@ enum NavigationType {
 
 export class Navigator<TCurrentScreen extends Screens> {
     private lastNavigation = new Date(0);
-    private hasGoneBack = false;
     private isGoingBack = false;
-
-    onGoBackListener?: () => void;
 
     private get navigationAllowed(): boolean {
         return differenceInMilliseconds(new Date(), this.lastNavigation) >= 500;
@@ -225,44 +223,30 @@ export class Navigator<TCurrentScreen extends Screens> {
         }
     }
 
-    async completeAndGoBack(
-        result: ScreenOutput<TCurrentScreen, ScreenDefinitions>
-    ): Promise<void> {
-        if (this.hasGoneBack || this.isGoingBack) {
+    private async internalGoBack(result: ScreenResult<TCurrentScreen, ScreenDefinitions>) {
+        if (this.isGoingBack) {
             return;
         }
-        this.hasGoneBack = true;
         this.isGoingBack = true;
         this.navigation.goBack();
         if (MODALS.includes(this.screen)) {
             await sleep(MODAL_ANIMATION_DURATION);
         }
-        this.notifyListenerIfPresent({ backClicked: false, result });
+        this.notifyListenerIfPresent(result);
         this.isGoingBack = false;
+    }
+    async completeAndGoBack(result: ScreenOutput<TCurrentScreen, ScreenDefinitions>) {
+        return this.internalGoBack({
+            backClicked: false,
+            result
+        });
     }
 
     async goBack() {
-        if (this.hasGoneBack || this.isGoingBack) {
-            return;
-        }
-        this.hasGoneBack = true;
-        this.isGoingBack = true;
-        this.navigation?.goBack();
-        if (MODALS.includes(this.screen)) {
-            await sleep(MODAL_ANIMATION_DURATION);
-        }
-        this.onGoBackListener?.();
-        this.notifyListenerIfPresent({
+        return this.internalGoBack({
             backClicked: true,
             result: undefined
         });
-        this.isGoingBack = false;
-    }
-
-    async goBackFromScreenIfStillPresent() {
-        if (!this.hasGoneBack) {
-            this.goBack();
-        }
     }
 }
 
@@ -294,8 +278,8 @@ export function useAsyncNavigation<TScreen extends Screens = Screens>(
     };
 }
 
-type NavigationListener<T = any> = (result: T) => void;
-type NavigationListenerStorage = Record<string, NavigationListener>;
+export type NavigationListener<T = any> = (result: T) => void;
+export type NavigationListenerStorage = Record<string, NavigationListener>;
 export const AsyncNavigationContext = createContext<{
     navigationListeners: NavigationListenerStorage;
 }>({ navigationListeners: {} });
@@ -328,17 +312,17 @@ export const AsyncNavigationContainer: React.FC<PropsWithChildren> = ({ children
         }
     }, [isReady]);
 
+    const onStateChange = useCallback((state: NavigationState | undefined) => {
+        //Here you could apply logic to skip saving the state if the current screen is a general screen
+        GlobalStorage.set(NAVIGATION_PERSISTENCE_KEY, JSON.stringify(state));
+    }, []);
     if (!isReady) {
         return null;
     }
     return (
         <AsyncNavigationContext.Provider
             value={{ navigationListeners: navigationListeners.current }}>
-            <NavigationContainer
-                initialState={initialState}
-                onStateChange={state =>
-                    GlobalStorage.set(NAVIGATION_PERSISTENCE_KEY, JSON.stringify(state))
-                }>
+            <NavigationContainer initialState={initialState} onStateChange={onStateChange}>
                 {children}
             </NavigationContainer>
         </AsyncNavigationContext.Provider>
