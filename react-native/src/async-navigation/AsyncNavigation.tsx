@@ -67,44 +67,35 @@ export type ScreenDefinitions =
           input: { defaultSelection?: number; maxDate?: number; minDate?: number };
           output: number;
       };
+
+type ScreenDefinition<T extends Screens> = Extract<
+    ScreenDefinitions,
+    {
+        screen: T;
+    }
+>;
+
 export type CommonScreenInput = { screen?: Screens; initial?: boolean } | undefined;
-export type ScreenInput<
-    T extends Screens,
-    A,
-    TExtracted = Extract<
-        A,
-        {
-            screen: T;
-        }
-    >
-> = TExtracted extends never
+export type ScreenInput<T extends Screens> = ScreenDefinition<T> extends never
     ? undefined
-    : TExtracted extends { input: infer TOut }
+    : ScreenDefinition<T> extends { input: infer TOut }
     ? TOut
     : undefined;
 
-export type ScreenOutput<
-    T extends Screens,
-    A,
-    TExtracted = Extract<
-        A,
-        {
-            screen: T;
-        }
-    >
-> = TExtracted extends never
+export type ScreenOutput<T extends Screens> = ScreenDefinition<T> extends never
     ? undefined
-    : TExtracted extends { output: infer TOut }
+    : ScreenDefinition<T> extends { output: infer TOut }
     ? TOut
     : undefined;
-export type ScreenResult<T extends Screens, A> =
+
+export type ScreenResult<T extends Screens> =
     | {
           backClicked: true;
           result: undefined;
       }
-    | { backClicked: false; result: ScreenOutput<T, A> };
+    | { backClicked: false; result: ScreenOutput<T> };
 
-export type FullParams<T extends Screens, A> = ScreenInput<T, A> & {
+export type FullParams<T extends Screens> = ScreenInput<T> & {
     listenerId?: string;
 };
 
@@ -143,45 +134,45 @@ export class Navigator<TCurrentScreen extends Screens> {
     }
 
     async navigate<TNewScreen extends Screens>(
-        ...args: ScreenInput<TNewScreen, ScreenDefinitions> extends undefined
-            ? [TNewScreen] | [TNewScreen, CommonScreenInput]
-            : [TNewScreen, ScreenInput<TNewScreen, ScreenDefinitions> & CommonScreenInput]
-    ): Promise<ScreenResult<TNewScreen, ScreenDefinitions>> {
+        ...args: ScreenInput<TNewScreen> extends undefined
+            ? [screen: TNewScreen] | [screen: TNewScreen, input: CommonScreenInput]
+            : [screen: TNewScreen, input: ScreenInput<TNewScreen> & CommonScreenInput]
+    ): Promise<ScreenResult<TNewScreen>> {
         return this.internalNavigate(NavigationType.Navigate, ...args);
     }
 
     async replace<TNewScreen extends Screens>(
-        ...args: ScreenInput<TNewScreen, ScreenDefinitions> extends undefined
-            ? [TNewScreen] | [TNewScreen, CommonScreenInput]
-            : [TNewScreen, ScreenInput<TNewScreen, ScreenDefinitions> & CommonScreenInput]
-    ): Promise<ScreenResult<TNewScreen, ScreenDefinitions>> {
+        ...args: ScreenInput<TNewScreen> extends undefined
+            ? [screen: TNewScreen] | [screen: TNewScreen, input: CommonScreenInput]
+            : [screen: TNewScreen, input: ScreenInput<TNewScreen> & CommonScreenInput]
+    ): Promise<ScreenResult<TNewScreen>> {
         return this.internalNavigate(NavigationType.Replace, ...args);
     }
 
     async push<TNewScreen extends Screens>(
-        ...args: ScreenInput<TNewScreen, ScreenDefinitions> extends undefined
-            ? [TNewScreen] | [TNewScreen, CommonScreenInput]
-            : [TNewScreen, ScreenInput<TNewScreen, ScreenDefinitions> & CommonScreenInput]
-    ): Promise<ScreenResult<TNewScreen, ScreenDefinitions>> {
+        ...args: ScreenInput<TNewScreen> extends undefined
+            ? [screen: TNewScreen] | [screen: TNewScreen, input: CommonScreenInput]
+            : [screen: TNewScreen, input: ScreenInput<TNewScreen> & CommonScreenInput]
+    ): Promise<ScreenResult<TNewScreen>> {
         return this.internalNavigate(NavigationType.Push, ...args);
     }
 
     private async internalNavigate<TNewScreen extends Screens>(
         type: NavigationType,
-        ...args: ScreenInput<TNewScreen, ScreenDefinitions> extends undefined
-            ? [TNewScreen] | [TNewScreen, CommonScreenInput]
-            : [TNewScreen, ScreenInput<TNewScreen, ScreenDefinitions> & CommonScreenInput]
-    ): Promise<ScreenResult<TNewScreen, ScreenDefinitions>> {
+        ...args: ScreenInput<TNewScreen> extends undefined
+            ? [screen: TNewScreen] | [screen: TNewScreen, input: CommonScreenInput]
+            : [screen: TNewScreen, input: ScreenInput<TNewScreen> & CommonScreenInput]
+    ): Promise<ScreenResult<TNewScreen>> {
         if (this.navigationAllowed) {
             this.lastNavigation = new Date();
-            return new Promise<ScreenResult<TNewScreen, ScreenDefinitions>>(resolve => {
-                const screen = args[0] as TNewScreen;
+            return new Promise<ScreenResult<TNewScreen>>(resolve => {
+                const screen = args[0];
                 const input = args.length > 1 ? args[1] : {};
                 const listenerId = getRandomId();
                 this.navigationListeners[listenerId] = (result: any) => {
                     resolve(result);
                 };
-                const payload: FullParams<any, any> = {
+                const payload: FullParams<any> = {
                     ...input,
                     listenerId
                 } as any;
@@ -207,14 +198,11 @@ export class Navigator<TCurrentScreen extends Screens> {
         };
     }
 
-    private notifyListenerIfPresent(result: ScreenResult<TCurrentScreen, ScreenDefinitions>) {
-        const params = this.route.params as unknown as FullParams<
-            TCurrentScreen,
-            ScreenDefinitions
-        >;
+    private notifyListenerIfPresent(result: ScreenResult<TCurrentScreen>) {
+        const params = this.route.params as unknown as FullParams<TCurrentScreen>;
 
         if (!!params?.listenerId) {
-            const listener: NavigationListener<ScreenResult<TCurrentScreen, ScreenDefinitions>> =
+            const listener: NavigationListener<ScreenResult<TCurrentScreen>> =
                 this.navigationListeners[params.listenerId];
             if (listener) {
                 listener(result);
@@ -223,7 +211,7 @@ export class Navigator<TCurrentScreen extends Screens> {
         }
     }
 
-    private async internalGoBack(result: ScreenResult<TCurrentScreen, ScreenDefinitions>) {
+    private async internalGoBack(result: ScreenResult<TCurrentScreen>) {
         if (this.isGoingBack) {
             return;
         }
@@ -235,7 +223,7 @@ export class Navigator<TCurrentScreen extends Screens> {
         this.notifyListenerIfPresent(result);
         this.isGoingBack = false;
     }
-    async completeAndGoBack(result: ScreenOutput<TCurrentScreen, ScreenDefinitions>) {
+    async completeAndGoBack(result: ScreenOutput<TCurrentScreen>) {
         return this.internalGoBack({
             backClicked: false,
             result
@@ -254,7 +242,7 @@ export function useAsyncNavigation<TScreen extends Screens = Screens>(
     screen: TScreen,
     options?: NativeStackNavigationOptions
 ): {
-    params: ScreenInput<TScreen, ScreenDefinitions>;
+    params: ScreenInput<TScreen>;
     navigator: Navigator<TScreen>;
     navigation: NativeStackNavigationProp<any, any>;
 } {
@@ -274,7 +262,7 @@ export function useAsyncNavigation<TScreen extends Screens = Screens>(
     return {
         navigator,
         navigation,
-        params: route.params as ScreenInput<TScreen, ScreenDefinitions>
+        params: route.params as ScreenInput<TScreen>
     };
 }
 
